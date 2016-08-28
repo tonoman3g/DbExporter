@@ -24,6 +24,7 @@ class DbMigrations extends DbExporter
     protected $customDb = false;
 
     public static $filePath;
+    const UNIQUE = 'unique';
 
     /**
      * Set the database name
@@ -85,6 +86,7 @@ class DbMigrations extends DbExporter
             $up = "Schema::create('{$value['table_name']}', function(Blueprint $" . "table) {\n";
 
             $tableDescribes = $this->getTableDescribes($value['table_name']);
+            $primaryKey = array();
             // Loop over the tables fields
             foreach ($tableDescribes as $values) {
                 $method = "";
@@ -160,19 +162,51 @@ class DbMigrations extends DbExporter
                         break;
                 }
 
-                if ($values->Key == 'PRI') {
+                if($values->Key == 'PRI') {
+                    $primaryKey[] = $values->Field;
+                }
+
+                if ($values->Extra == 'auto_increment') {
                     $method = 'increments';
                 }
 
                 $up .= "                $" . "table->{$method}('{$values->Field}'{$numbers}){$nullable}{$default}{$unsigned};\n";
             }
 
+            $pkCount = count($primaryKey);
+            if($pkCount>0) {
+                $primaryKeyStr = implode("', '", $primaryKey);
+                //print("    primary key: '$primaryKeyStr'\n");
+                if($pkCount==1) {
+                    $up .= '                $' . "table->primary('$primaryKeyStr');\n";
+                } else {
+                    $up .= '                $' . "table->primary(['$primaryKeyStr']);\n";
+                }
+            }
             $tableIndexes = $this->getTableIndexes($value['table_name']);
             if (!is_null($tableIndexes) && count($tableIndexes)){
+                $indexes = [];
             	foreach ($tableIndexes as $index) {
-                	$up .= '                $' . "table->index('" . $index['Key_name'] . "');\n";
+                    $indexName = $this->getIndexName($index);
+                    //print("    index: {$indexName}: {$index['Column_name']}\n");
+                    if(!array_key_exists($indexName, $indexes)) {
+                        $indexes[$indexName] = [];
+                    }
+                    $indexes[$indexName][] =  $index['Column_name'];
             	}
-        	}
+                foreach ($indexes as $name => $columns) {
+                    $method = 'index';
+                    if(strpos($name, self::UNIQUE)!== false) {
+                        $method = 'unique';
+                    }
+                    if(count($columns)>1) {
+                        $up .= '                $' . "table->$method(['" . implode(', ', $columns) . "'], '$name');\n";
+                    } else {
+
+                        $up .= '                $' . "table->$method('" . $columns[0] . "', '$name');\n";
+                    }
+                }
+            }
 
             $up .= "            });\n\n";
 
@@ -226,4 +260,17 @@ class DbMigrations extends DbExporter
         return $template;
     }
 
+    /**
+     * @param $index
+     * @return mixed
+     */
+    private function getIndexName($index)
+    {
+        $name = $index['Key_name'];
+        if(!$index['Non_unique']) {
+            if(strpos($name, self::UNIQUE)!== false) return $name;
+            else  return self::UNIQUE.'_'.$name;
+        }
+        return $name;
+    }
 }
