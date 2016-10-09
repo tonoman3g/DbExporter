@@ -9,6 +9,8 @@ abstract class DbExporter
      * @var array $ignore
      */
     public static $ignore = array('migrations');
+    public static $tables = array();
+    public static $targetFilename;
     public static $remote;
 
     /**

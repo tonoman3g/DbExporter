@@ -1,10 +1,11 @@
 <?php namespace Nwidart\DbExporter\Commands;
 
 
+use Config;
 use Nwidart\DbExporter\DbExporter;
 use Nwidart\DbExporter\DbExportHandler;
+use Str;
 use Symfony\Component\Console\Input\InputOption;
-use Config, Str;
 
 class SeedGeneratorCommand extends GeneratorCommand
 {
@@ -30,16 +31,29 @@ class SeedGeneratorCommand extends GeneratorCommand
 
         // Grab the options
         $ignore = $this->option('ignore');
+        $table = $this->option('table');
+        $targetFilename = $this->option('name');
 
-        if (empty($ignore)) {
-            $this->handler->seed();
-        } else {
-            $tables = explode(',', str_replace(' ', '', $ignore));
-            $this->handler->ignore($tables)->seed();
-            foreach (DbExporter::$ignore as $table) {
-                $this->comment("Ignoring the {$table} table");
+        if (!empty($targetFilename)) {
+            $this->handler->targetFileName($targetFilename);
+        }
+
+        if (!empty($ignore)) {
+            $ignoredTables = explode(',', str_replace(' ', '', $ignore));
+            $this->handler->ignore($ignoredTables);
+            foreach (DbExporter::$ignore as $ignoredTable) {
+                $this->comment("Ignoring the {$ignoredTable} table");
             }
         }
+
+        if (!empty($table)) {
+            $processedTables = explode(',', str_replace(' ', '', $table));
+            $this->handler->table($processedTables);
+            foreach (DbExporter::$tables as $table) {
+                $this->comment("Proccessing the {$table} table");
+            }
+        }
+        $this->handler->seed();
 
         // Symfony style block messages
         $formatter = $this->getHelperSet()->get('formatter');
@@ -53,14 +67,23 @@ class SeedGeneratorCommand extends GeneratorCommand
 
     private function getFilename()
     {
-        $filename = Str::camel($this->getDatabaseName()) . "TableSeeder";
-        return config('db-exporter.export_path.seeds')."{$filename}.php";
+        if (empty(DbExporter::$targetFilename)) {
+            $defaultFilename = ucfirst(Str::camel($this->getDatabaseName()));
+        } else {
+            $defaultFilename = ucfirst(DbExporter::$targetFilename);
+        }
+
+        $filename = $defaultFilename . "TableSeeder";
+
+        return config('db-exporter.export_path.seeds') . "{$filename}.php";
     }
 
     protected function getOptions()
     {
         return array(
-            array('ignore', 'ign', InputOption::VALUE_REQUIRED, 'Ignore tables to export, separated by a comma', null)
+            array('ignore', 'ign', InputOption::VALUE_REQUIRED, 'Ignore tables to export, separated by a comma', null),
+            array('table', 'tbl', InputOption::VALUE_REQUIRED, 'Table names to export, seperated by a comma', null),
+            array('name', null, InputOption::VALUE_REQUIRED, 'Generated file name', null)
         );
     }
 }

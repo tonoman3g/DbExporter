@@ -74,6 +74,18 @@ class DbExportHandler
         return $this;
     }
 
+    public function table($tables){
+        DbExporter::$tables = array_merge(DbExporter::$tables, (array)$tables);
+
+        return $this;
+    }
+
+    public function targetFileName($name){
+        DbExporter::$targetFilename = $name;
+
+        return $this;
+    }
+
     /**
      * @return mixed
      */

@@ -1,6 +1,9 @@
 <?php namespace Nwidart\DbExporter;
 
-use Config, DB, Str, File;
+use Config;
+use DB;
+use File;
+use Str;
 
 class DbSeeding extends DbExporter
 {
@@ -41,9 +44,16 @@ class DbSeeding extends DbExporter
 
         $seed = $this->compile();
 
-        $filename = Str::camel($this->database) . "TableSeeder";
+        if (empty(DbExporter::$targetFilename)) {
+            $defaultFilename = ucfirst(Str::camel($this->database));
+        } else {
+            $defaultFilename = ucfirst(DbExporter::$targetFilename);
+        }
 
-        file_put_contents(config('db-exporter.export_path.seeds')."{$filename}.php", $seed);
+
+        $filename = $defaultFilename . "TableSeeder";
+
+        file_put_contents(config('db-exporter.export_path.seeds') . "{$filename}.php", $seed);
     }
 
     /**
@@ -68,6 +78,13 @@ class DbSeeding extends DbExporter
             if (in_array($value['table_name'], self::$ignore)) {
                 continue;
             }
+
+            if (!empty(self::$tables)) {
+                if (!in_array($value['table_name'], self::$tables)) {
+                    continue;
+                }
+            }
+
             $tableName = $value['table_name'];
             $tableData = $this->getTableData($value['table_name']);
             $insertStub = "";
@@ -109,7 +126,7 @@ class DbSeeding extends DbExporter
         $template = File::get(__DIR__ . '/templates/seed.txt');
 
         // Replace the classname
-        $template = str_replace('{{className}}', \Str::camel($this->database) . "TableSeeder", $template);
+        $template = str_replace('{{className}}', ucfirst(\Str::camel($this->database) . "TableSeeder"), $template);
         $template = str_replace('{{run}}', $this->seedingStub, $template);
 
         return $template;
@@ -119,9 +136,11 @@ class DbSeeding extends DbExporter
     {
         $prop = addslashes($prop);
         $value = addslashes($value);
-        if (is_numeric($value)) {
+        if (is_string($value)) {
+            return "                '{$prop}' => '{$value}',\n";
+        } elseif (is_numeric($value)) {
             return "                '{$prop}' => {$value},\n";
-        } elseif($value == '') {
+        } elseif ($value == '') {
             return "                '{$prop}' => NULL,\n";
         } else {
             return "                '{$prop}' => '{$value}',\n";
