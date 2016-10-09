@@ -87,6 +87,10 @@ class DbSeeding extends DbExporter
 
             $tableName = $value['table_name'];
             $tableData = $this->getTableData($value['table_name']);
+
+            $stub .= "DB::table('" . $tableName . "')->truncate();
+            ";
+
             $insertStub = "";
 
             foreach ($tableData as $obj) {
