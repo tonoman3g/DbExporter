@@ -125,8 +125,14 @@ class DbSeeding extends DbExporter
         // Grab the template
         $template = File::get(__DIR__ . '/templates/seed.txt');
 
+        if (empty(DbExporter::$targetFilename)) {
+            $className = ucfirst(Str::camel($this->database));
+        } else {
+            $className = ucfirst(DbExporter::$targetFilename);
+        }
+
         // Replace the classname
-        $template = str_replace('{{className}}', ucfirst(\Str::camel($this->database) . "TableSeeder"), $template);
+        $template = str_replace('{{className}}', ucfirst($className. "TableSeeder"), $template);
         $template = str_replace('{{run}}', $this->seedingStub, $template);
 
         return $template;
