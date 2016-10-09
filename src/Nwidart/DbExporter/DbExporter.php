@@ -34,10 +34,10 @@ abstract class DbExporter
      */
     protected function getTableDescribes($table)
     {
-        return DB::table('information_schema.columns')
+        return (DB::table('information_schema.columns')
             ->where('table_schema', '=', $this->database)
             ->where('table_name', '=', $table)
-            ->get($this->selects);
+            ->get($this->selects));
     }
 
     /**

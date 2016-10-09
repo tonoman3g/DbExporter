@@ -53,7 +53,7 @@ class DbMigrations extends DbExporter
 
         $schema = $this->compile();
         $filename = date('Y_m_d_His') . "_create_" . str_replace('-', '', $this->database) . "_database.php";
-        self::$filePath = config('db-exporter.export_path.migrations')."{$filename}";
+        self::$filePath = config('db-exporter.export_path.migrations') . "{$filename}";
 
         file_put_contents(self::$filePath, $schema);
 
@@ -82,19 +82,35 @@ class DbMigrations extends DbExporter
                 continue;
             }
 
-            $down = "Schema::drop('{$value['table_name']}');";
+            $down = "Schema::dropIfExists('{$value['table_name']}');";
             $up = "Schema::create('{$value['table_name']}', function(Blueprint $" . "table) {\n";
-
             $tableDescribes = $this->getTableDescribes($value['table_name']);
             $primaryKey = array();
+
+            $isPrimaryIncrement = false;
             // Loop over the tables fields
             foreach ($tableDescribes as $values) {
+
                 $method = "";
                 $para = strpos($values->Type, '(');
                 $type = $para > -1 ? substr($values->Type, 0, $para) : $values->Type;
                 $numbers = "";
                 $nullable = $values->Null == "NO" ? "" : "->nullable()";
-                $default = empty($values->Default) ? "" : "->default('".$values->Default."')";
+                if (empty($values->Default)) {
+                    $default = "";
+                } else {
+                    if ($values->Default === 'CURRENT_TIMESTAMP') {
+                        $defaultValue = $values->Default;
+                        if ($values->Extra === 'on update CURRENT_TIMESTAMP') {
+                            $defaultValue = $defaultValue . ' ' . $values->Extra;
+                        }
+                        $default = "->default(DB::raw('" . $defaultValue . "'))";
+                    } else {
+                        $default = "->default('" . $values->Default . "')";
+                    }
+
+                }
+
                 $unsigned = strpos($values->Type, "unsigned") === false ? '' : '->unsigned()';
 
                 switch ($type) {
@@ -110,7 +126,10 @@ class DbMigrations extends DbExporter
                     case 'char' :
                     case 'varchar' :
                         $para = strpos($values->Type, '(');
-                        $numbers = ", " . substr($values->Type, $para + 1, -1);
+                        $numbers = '';
+                        if ($para !== false) {
+                            $numbers = ", " . substr($values->Type, $para + 1, -1);
+                        }
                         $method = 'string';
                         break;
                     case 'float' :
@@ -118,12 +137,18 @@ class DbMigrations extends DbExporter
                         break;
                     case 'double' :
                         $para = strpos($values->Type, '('); # 6
-                        $numbers = ", " . substr($values->Type, $para + 1, -1);
+                        $numbers = '';
+                        if ($para !== false) {
+                            $numbers = ", " . substr($values->Type, $para + 1, -1);
+                        }
                         $method = 'double';
                         break;
                     case 'decimal' :
                         $para = strpos($values->Type, '(');
-                        $numbers = ", " . substr($values->Type, $para + 1, -1);
+                        $numbers = '';
+                        if ($para !== false) {
+                            $numbers = ", " . substr($values->Type, $para + 1, -1);
+                        }
                         $method = 'decimal';
                         break;
                     case 'tinyint' :
@@ -157,52 +182,58 @@ class DbMigrations extends DbExporter
                     case 'enum' :
                         $method = 'enum';
                         $para = strpos($values->Type, '('); # 4
-                        $options = substr($values->Type, $para + 1, -1);
+                        $options = '';
+                        if ($para !== false) {
+                            $options = substr($values->Type, $para + 1, -1);
+                        }
                         $numbers = ', array(' . $options . ')';
                         break;
                 }
 
-                if($values->Key == 'PRI') {
+                if ($values->Key == 'PRI') {
                     $primaryKey[] = $values->Field;
                 }
 
                 if ($values->Extra == 'auto_increment') {
                     $method = 'increments';
+                    if ($values->Key == 'PRI') {
+                        $isPrimaryIncrement = true;
+                    }
                 }
 
                 $up .= "                $" . "table->{$method}('{$values->Field}'{$numbers}){$nullable}{$default}{$unsigned};\n";
             }
 
             $pkCount = count($primaryKey);
-            if($pkCount>0) {
+
+            if ($pkCount > 0 && !$isPrimaryIncrement) {
                 $primaryKeyStr = implode("', '", $primaryKey);
                 //print("    primary key: '$primaryKeyStr'\n");
-                if($pkCount==1) {
+                if ($pkCount == 1) {
                     $up .= '                $' . "table->primary('$primaryKeyStr');\n";
                 } else {
                     $up .= '                $' . "table->primary(['$primaryKeyStr']);\n";
                 }
             }
             $tableIndexes = $this->getTableIndexes($value['table_name']);
-            if (!is_null($tableIndexes) && count($tableIndexes)){
+            if (!is_null($tableIndexes) && count($tableIndexes)) {
                 $indexes = [];
-            	foreach ($tableIndexes as $index) {
+                foreach ($tableIndexes as $index) {
                     $indexName = $this->getIndexName($index);
                     //print("    index: {$indexName}: {$index['Column_name']}\n");
-                    if(!array_key_exists($indexName, $indexes)) {
+                    if (!array_key_exists($indexName, $indexes)) {
                         $indexes[$indexName] = [];
                     }
-                    $indexes[$indexName][] =  $index['Column_name'];
-            	}
+                    $indexes[$indexName][] = $index['Column_name'];
+                }
                 foreach ($indexes as $name => $columns) {
                     $method = 'index';
-                    if(strpos($name, self::UNIQUE)!== false) {
+                    if (strpos($name, self::UNIQUE) !== false) {
                         $method = 'unique';
                     }
-                    if(count($columns)>1) {
-                        $up .= '                $' . "table->$method(['" . implode(', ', $columns) . "'], '$name');\n";
+                    if (count($columns) > 1) {
+                        $up .= '                $' . "table->$method(['" . implode("','", $columns) . "'], '$name');\n";
                     } else {
-
                         $up .= '                $' . "table->$method('" . $columns[0] . "', '$name');\n";
                     }
                 }
@@ -211,7 +242,7 @@ class DbMigrations extends DbExporter
             $up .= "            });\n\n";
 
             $this->schema[$value['table_name']] = array(
-                'up'   => $up,
+                'up' => $up,
                 'down' => $down
             );
         }
@@ -231,20 +262,20 @@ class DbMigrations extends DbExporter
 
         // prevent of failure when no table
         if (!is_null($this->schema) && count($this->schema)) {
-	        foreach ($this->schema as $name => $values) {
-	            // check again for ignored tables
-	            if (in_array($name, self::$ignore)) {
-	                continue;
-	            }
-	            $upSchema .= "
+            foreach ($this->schema as $name => $values) {
+                // check again for ignored tables
+                if (in_array($name, self::$ignore)) {
+                    continue;
+                }
+                $upSchema .= "
 	    /**
 	     * Table: {$name}
 	     */
 	    {$values['up']}";
 
-	            $downSchema .= "
+                $downSchema .= "
 	            {$values['down']}";
-	        }
+            }
         }
 
         // Grab the template
@@ -268,9 +299,12 @@ class DbMigrations extends DbExporter
     private function getIndexName($index)
     {
         $name = $index['Key_name'];
-        if(!$index['Non_unique']) {
-            if(strpos($name, self::UNIQUE)!== false) return $name;
-            else  return self::UNIQUE.'_'.$name;
+        if (!$index['Non_unique']) {
+            if (strpos($name, self::UNIQUE) !== false) {
+                return $name;
+            } else {
+                return self::UNIQUE . '_' . $name;
+            }
         }
         return $name;
     }
